@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import {
   BUILTIN_SCENES,
+  commentTimeAgo,
   influenceRadiusM,
   isCleanText,
   mapSnapshotUrl,
@@ -11,6 +12,7 @@ import {
   type SceneDef,
   type ScenePlace,
 } from '../lib/sceneMap';
+import { getProfile } from '../lib/mapSocial';
 
 const MAX_PHOTO_BYTES = 180_000;
 
@@ -57,12 +59,15 @@ export function MapPlaceDetail({
   embedded?: boolean;
 }) {
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const [photoIx, setPhotoIx] = useState(0);
   const [text, setText] = useState('');
   const [pendingPhotos, setPendingPhotos] = useState<string[]>([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [replyTo, setReplyTo] = useState<PlaceComment | null>(null);
+  const [expandedReplies, setExpandedReplies] = useState<Record<string, boolean>>({});
 
   const gallery = useMemo(() => {
     const userPhotos = place.photos || [];
@@ -71,12 +76,32 @@ export function MapPlaceDetail({
     return [...userPhotos, snap];
   }, [place.photos, place.lat, place.lng]);
 
-  const comments = [...(place.comments || [])].sort((a, b) => {
-    const lb = (b.likes || []).length - (a.likes || []).length;
-    if (lb !== 0) return lb;
-    return b.createdAt - a.createdAt;
-  });
+  const allComments = place.comments || [];
+  const roots = useMemo(() => {
+    return allComments
+      .filter((c) => !c.parentId)
+      .sort((a, b) => {
+        const lb = (b.likes || []).length - (a.likes || []).length;
+        if (lb !== 0) return lb;
+        return b.createdAt - a.createdAt;
+      });
+  }, [allComments]);
+
+  const repliesByParent = useMemo(() => {
+    const map: Record<string, PlaceComment[]> = {};
+    for (const c of allComments) {
+      if (!c.parentId) continue;
+      (map[c.parentId] ||= []).push(c);
+    }
+    for (const id of Object.keys(map)) {
+      map[id].sort((a, b) => a.createdAt - b.createdAt);
+    }
+    return map;
+  }, [allComments]);
+
   const commentCount = placeCommentCount(place);
+  const authorAvatar =
+    author?.id ? getProfile(author.id)?.avatarUrl || null : null;
 
   async function onPickFiles(files: FileList | null) {
     if (!files?.length) return;
@@ -120,6 +145,7 @@ export function MapPlaceDetail({
       createdAt: Date.now(),
       authorId: author.id,
       likes: [],
+      parentId: replyTo?.id || null,
     };
 
     const photos = [...(place.photos || []), ...pendingPhotos].slice(0, 24);
@@ -128,8 +154,12 @@ export function MapPlaceDetail({
       photos,
       comments: [comment, ...(place.comments || [])],
     });
+    if (replyTo) {
+      setExpandedReplies((prev) => ({ ...prev, [replyTo.id]: true }));
+    }
     setText('');
     setPendingPhotos([]);
+    setReplyTo(null);
   }
 
   function toggleLike(commentId: string) {
@@ -148,6 +178,130 @@ export function MapPlaceDetail({
         return { ...c, likes };
       }),
     });
+  }
+
+  function startReply(c: PlaceComment) {
+    if (!author?.id) {
+      setError('Sign in to reply.');
+      return;
+    }
+    // Instagram: replies hang under the root comment, with @mention
+    const root =
+      c.parentId ? allComments.find((x) => x.id === c.parentId) || c : c;
+    setReplyTo(root);
+    setText(`@${c.name} `);
+    window.setTimeout(() => inputRef.current?.focus(), 50);
+  }
+
+  function avatarFor(c: PlaceComment) {
+    const url = c.authorId ? getProfile(c.authorId)?.avatarUrl : null;
+    const initial = (c.name || '?').slice(0, 1).toUpperCase();
+    if (url) {
+      return (
+        <img
+          src={url}
+          alt=""
+          className="h-full w-full object-cover"
+        />
+      );
+    }
+    return (
+      <span className="grid h-full w-full place-items-center text-[11px] font-semibold text-[rgba(235,228,218,0.7)]">
+        {initial}
+      </span>
+    );
+  }
+
+  function CommentRow({ c, depth = 0 }: { c: PlaceComment; depth?: number }) {
+    const liked = author?.id ? (c.likes || []).includes(author.id) : false;
+    const likeCount = (c.likes || []).length;
+    const kids = repliesByParent[c.id] || [];
+    const showKids = expandedReplies[c.id] ?? kids.length > 0;
+    return (
+      <div className={depth ? 'mt-3' : ''}>
+        <div className="flex gap-2.5">
+          <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-[#2a2520] ring-1 ring-[rgba(235,228,218,0.1)]">
+            {avatarFor(c)}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px] leading-snug text-[rgba(235,228,218,0.88)]">
+              <span className="font-semibold text-[#ebe4da]">{c.name}</span>{' '}
+              {c.text}
+            </p>
+            {c.photos?.length ? (
+              <div className="mt-1.5 flex gap-1.5 overflow-x-auto">
+                {c.photos.map((src, i) => (
+                  <img
+                    key={i}
+                    src={src}
+                    alt=""
+                    className="h-14 w-14 shrink-0 rounded-lg object-cover"
+                    onClick={() => {
+                      const ix = (place.photos || []).indexOf(src);
+                      if (ix >= 0) setPhotoIx(ix);
+                    }}
+                  />
+                ))}
+              </div>
+            ) : null}
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-medium text-[rgba(235,228,218,0.4)]">
+              <span>{commentTimeAgo(c.createdAt)}</span>
+              {likeCount > 0 ? (
+                <span>
+                  {likeCount} like{likeCount === 1 ? '' : 's'}
+                </span>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => startReply(c)}
+                className="hover:text-[rgba(235,228,218,0.75)]"
+              >
+                Reply
+              </button>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => toggleLike(c.id)}
+            className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center self-start"
+            aria-label={liked ? 'Unlike' : 'Like'}
+          >
+            <HeartIcon filled={liked} />
+          </button>
+        </div>
+
+        {kids.length && depth === 0 ? (
+          <div className="ml-[42px] mt-2">
+            {!showKids ? (
+              <button
+                type="button"
+                onClick={() => setExpandedReplies((p) => ({ ...p, [c.id]: true }))}
+                className="flex items-center gap-2 text-[11px] font-medium text-[rgba(235,228,218,0.4)]"
+              >
+                <span className="h-px w-6 bg-[rgba(235,228,218,0.25)]" />
+                View replies ({kids.length})
+              </button>
+            ) : (
+              <>
+                {kids.length > 1 ? (
+                  <button
+                    type="button"
+                    onClick={() => setExpandedReplies((p) => ({ ...p, [c.id]: false }))}
+                    className="mb-2 flex items-center gap-2 text-[11px] font-medium text-[rgba(235,228,218,0.4)]"
+                  >
+                    <span className="h-px w-6 bg-[rgba(235,228,218,0.25)]" />
+                    Hide replies
+                  </button>
+                ) : null}
+                {kids.map((r) => (
+                  <CommentRow key={r.id} c={r} depth={1} />
+                ))}
+              </>
+            )}
+          </div>
+        ) : null}
+      </div>
+    );
   }
 
   async function sharePlace() {
@@ -291,103 +445,96 @@ export function MapPlaceDetail({
         </p>
 
         <div className="mt-5 border-t border-[rgba(235,228,218,0.1)] pt-4">
-          <div className="mb-2 text-[12px] font-medium uppercase tracking-[0.12em] text-[rgba(235,228,218,0.45)]">
-            Discussion
+          <div className="mb-3 text-[13px] font-semibold text-[#ebe4da]">
+            Comments
+            {commentCount ? (
+              <span className="ml-1.5 font-normal text-[rgba(235,228,218,0.4)]">{commentCount}</span>
+            ) : null}
           </div>
 
-          <div className="mb-3 space-y-3">
-            {comments.length ? (
-              comments.map((c) => {
-                const liked = author?.id ? (c.likes || []).includes(author.id) : false;
-                const likeCount = (c.likes || []).length;
-                return (
-                  <div
-                    key={c.id}
-                    className="rounded-xl bg-[#161311]/70 p-3 ring-1 ring-[rgba(235,228,218,0.08)]"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[13px] font-medium">{c.name}</span>
-                      <span className="text-[10px] text-[rgba(235,228,218,0.35)]">
-                        {new Date(c.createdAt).toLocaleString()}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-[13px] leading-relaxed text-[rgba(235,228,218,0.8)]">
-                      {c.text}
-                    </p>
-                    {c.photos?.length ? (
-                      <div className="mt-2 flex gap-1.5 overflow-x-auto">
-                        {c.photos.map((src, i) => (
-                          <img
-                            key={i}
-                            src={src}
-                            alt=""
-                            className="h-14 w-14 shrink-0 rounded-lg object-cover"
-                            onClick={() => {
-                              const ix = (place.photos || []).indexOf(src);
-                              if (ix >= 0) setPhotoIx(ix);
-                            }}
-                          />
-                        ))}
-                      </div>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={() => toggleLike(c.id)}
-                      className="mt-2 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] ring-1"
-                      style={{
-                        color: liked ? '#e8843a' : 'rgba(235,228,218,0.55)',
-                        borderColor: liked ? 'rgba(232,132,58,0.45)' : 'rgba(235,228,218,0.12)',
-                        background: liked ? 'rgba(232,132,58,0.12)' : 'transparent',
-                      }}
-                    >
-                      ▲ {likeCount}
-                    </button>
-                  </div>
-                );
-              })
+          <div className="mb-4 space-y-4">
+            {roots.length ? (
+              roots.map((c) => <CommentRow key={c.id} c={c} />)
             ) : (
-              <p className="text-[13px] text-[rgba(235,228,218,0.45)]">
-                No comments yet — start the thread.
+              <p className="py-2 text-center text-[13px] text-[rgba(235,228,218,0.4)]">
+                No comments yet.
               </p>
             )}
           </div>
 
-          <div className="rounded-xl border border-[rgba(235,228,218,0.12)] bg-[#161311] p-3">
-            {author?.id ? (
-              <div className="mb-2 text-[11px] text-[rgba(235,228,218,0.45)]">
-                Posting as <span className="text-[#ebe4da]">{author.name}</span>
-              </div>
-            ) : null}
-            <textarea
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              placeholder={author?.id ? 'Join the discussion…' : 'Sign in to comment'}
-              rows={3}
-              disabled={!author?.id}
-              className="w-full resize-none rounded-lg border border-[rgba(235,228,218,0.1)] bg-transparent px-2 py-1.5 text-[13px] outline-none placeholder:text-[rgba(235,228,218,0.35)] disabled:opacity-50"
-            />
-            {pendingPhotos.length ? (
-              <div className="mt-2 flex gap-1.5 overflow-x-auto">
-                {pendingPhotos.map((src, i) => (
-                  <div key={i} className="relative shrink-0">
-                    <img src={src} alt="" className="h-12 w-12 rounded-lg object-cover" />
-                    <button
-                      type="button"
-                      className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-black text-[10px]"
-                      onClick={() => setPendingPhotos((p) => p.filter((_, j) => j !== i))}
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-            {error ? <p className="mt-1 text-[12px] text-[#e8a090]">{error}</p> : null}
-            <div className="mt-2 flex gap-2">
-              <label
-                className={`flex h-9 flex-1 items-center justify-center rounded-full border border-[rgba(235,228,218,0.14)] text-[12px] ${author?.id ? 'cursor-pointer' : 'cursor-not-allowed opacity-40'}`}
+          {replyTo ? (
+            <div className="mb-2 flex items-center justify-between gap-2 rounded-lg bg-[#161311] px-2.5 py-1.5 text-[11px] text-[rgba(235,228,218,0.55)]">
+              <span>
+                Replying to <span className="font-semibold text-[#ebe4da]">@{replyTo.name}</span>
+              </span>
+              <button
+                type="button"
+                className="text-[rgba(235,228,218,0.45)] hover:text-[#ebe4da]"
+                onClick={() => {
+                  setReplyTo(null);
+                  setText('');
+                }}
               >
-                Add photos
+                Cancel
+              </button>
+            </div>
+          ) : null}
+
+          {pendingPhotos.length ? (
+            <div className="mb-2 flex gap-1.5 overflow-x-auto">
+              {pendingPhotos.map((src, i) => (
+                <div key={i} className="relative shrink-0">
+                  <img src={src} alt="" className="h-12 w-12 rounded-lg object-cover" />
+                  <button
+                    type="button"
+                    className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-black text-[10px]"
+                    onClick={() => setPendingPhotos((p) => p.filter((_, j) => j !== i))}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {error ? <p className="mb-2 text-[12px] text-[#e8a090]">{error}</p> : null}
+
+          <div className="flex items-center gap-2.5 border-t border-[rgba(235,228,218,0.08)] pt-3">
+            <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-[#2a2520] ring-1 ring-[rgba(235,228,218,0.1)]">
+              {authorAvatar ? (
+                <img src={authorAvatar} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <span className="grid h-full w-full place-items-center text-[11px] font-semibold text-[rgba(235,228,218,0.55)]">
+                  {(author?.name || '?').slice(0, 1).toUpperCase()}
+                </span>
+              )}
+            </div>
+            <div className="flex min-w-0 flex-1 items-center gap-1.5 rounded-full bg-[#161311] px-3.5 py-2 ring-1 ring-[rgba(235,228,218,0.1)]">
+              <input
+                ref={inputRef}
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    submitComment();
+                  }
+                }}
+                placeholder={
+                  author?.id
+                    ? replyTo
+                      ? `Reply to ${replyTo.name}…`
+                      : 'Add a comment…'
+                    : 'Sign in to comment'
+                }
+                disabled={!author?.id}
+                className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-[rgba(235,228,218,0.35)] disabled:opacity-50"
+              />
+              <label
+                className={`shrink-0 text-[16px] leading-none ${author?.id ? 'cursor-pointer text-[rgba(235,228,218,0.45)]' : 'cursor-not-allowed opacity-30'}`}
+                title="Add photo"
+              >
+                ⊕
                 <input
                   ref={fileRef}
                   type="file"
@@ -402,16 +549,39 @@ export function MapPlaceDetail({
                 type="button"
                 onClick={submitComment}
                 disabled={!text.trim() || busy || !author?.id}
-                className="h-9 flex-[1.4] rounded-full text-[12px] font-medium text-[#161311] disabled:opacity-40"
-                style={{ background: scene.color || BUILTIN_SCENES[0].color }}
+                className="shrink-0 text-[13px] font-semibold disabled:opacity-30"
+                style={{ color: scene.color || BUILTIN_SCENES[0].color }}
               >
-                Comment
+                Post
               </button>
             </div>
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+function HeartIcon({ filled }: { filled: boolean }) {
+  if (filled) {
+    return (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="#e8843a" aria-hidden>
+        <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+      </svg>
+    );
+  }
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="rgba(235,228,218,0.45)"
+      strokeWidth="1.8"
+      aria-hidden
+    >
+      <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+    </svg>
   );
 }
 

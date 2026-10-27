@@ -18,8 +18,8 @@ import { MapPlaceDetail } from './MapPlaceCard';
 type SheetSnap = 'peek' | 'mid' | 'full';
 
 const SNAP: Record<SheetSnap, number> = {
-  /** Search pill + handle + safe bottom — tuned like Apple Maps closed sheet */
-  peek: 102,
+  /** Handle + search row — flush to bottom edge */
+  peek: 68,
   mid: 0.5,
   full: 0.9,
 };
@@ -29,9 +29,23 @@ const PLACE_MID = 0.5;
 const PLACE_FULL = 0.9;
 const PLACE_MIN = 0.28;
 
+function safeAreaBottom() {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return 0;
+  const probe = document.createElement('div');
+  probe.style.cssText =
+    'position:fixed;visibility:hidden;pointer-events:none;padding-bottom:env(safe-area-inset-bottom)';
+  document.body.appendChild(probe);
+  const px = parseFloat(getComputedStyle(probe).paddingBottom) || 0;
+  probe.remove();
+  return px;
+}
+
 function snapPx(snap: SheetSnap, vh: number) {
   const v = SNAP[snap];
-  return v < 2 ? Math.round(vh * v) : v;
+  if (v < 2) return Math.round(vh * v);
+  // Peek content height + home indicator (CSS padding uses the same inset)
+  if (snap === 'peek') return v + Math.round(safeAreaBottom());
+  return v;
 }
 
 function haptic(ms = 10) {
@@ -440,7 +454,7 @@ export function MapMobileSheet({
       <div className="flex h-full flex-col overflow-hidden rounded-t-[22px] bg-[rgba(28,24,21,0.96)] shadow-[0_-12px_40px_rgba(0,0,0,0.45)] ring-1 ring-[rgba(235,228,218,0.1)] backdrop-blur-xl">
         {/* Drag handle — primary pull gesture (Apple Maps–style) */}
         <div
-          className="flex shrink-0 touch-none flex-col items-center pt-2"
+          className="flex shrink-0 touch-none flex-col items-center pb-1 pt-1.5"
           style={{ touchAction: 'none' }}
           onPointerDown={(e) => beginDrag(e)}
           onPointerMove={onDragMove}
@@ -448,7 +462,7 @@ export function MapMobileSheet({
           onPointerCancel={endDrag}
           onClick={onHandleTap}
         >
-          <div className="h-[5px] w-9 rounded-full bg-[rgba(235,228,218,0.32)]" />
+          <div className="h-[4px] w-9 rounded-full bg-[rgba(235,228,218,0.32)]" />
         </div>
 
         {placeMode && selected && selectedScene ? (
@@ -489,8 +503,8 @@ export function MapMobileSheet({
           </div>
         ) : (
           <div
-            className="flex shrink-0 items-center gap-2.5 px-3 pt-2.5"
-            style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+            className="flex shrink-0 items-center gap-2.5 px-3 pt-0.5"
+            style={{ paddingBottom: 'max(0.4rem, env(safe-area-inset-bottom))' }}
           >
             <div className="flex h-11 min-w-0 flex-1 items-center gap-2 rounded-full bg-[#161311] px-3.5 ring-1 ring-[rgba(235,228,218,0.1)]">
               <SearchIcon />

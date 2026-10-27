@@ -659,7 +659,7 @@ export function MapPage() {
         style={{
           bottom: selected
             ? 'calc(52dvh + env(safe-area-inset-bottom))'
-            : 'calc(6.75rem + env(safe-area-inset-bottom))',
+            : 'calc(5rem + env(safe-area-inset-bottom))',
         }}
       >
         <button

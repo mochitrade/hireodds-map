@@ -67,6 +67,6 @@
 /* Keep map gestures from fighting the sheet drag handle */
 @media (max-width: 1023px) {
   .map-page .leaflet-bottom {
-    bottom: 5.5rem;
+    bottom: 4.5rem;
   }
 }

@@ -18,6 +18,8 @@ export type PlaceComment = {
   authorId?: string;
   /** User ids who liked this comment */
   likes?: string[];
+  /** Parent comment id for Instagram-style replies */
+  parentId?: string | null;
 };
 
 export type ScenePlace = {
@@ -61,6 +63,21 @@ export function placeShareUrl(placeId: string): string {
 
 export function placeCommentCount(p: ScenePlace): number {
   return (p.comments || []).length;
+}
+
+/** Relative time like Instagram (1m, 2h, 3d). */
+export function commentTimeAgo(ts: number): string {
+  const s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  if (s < 60) return `${s || 1}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d}d`;
+  const w = Math.floor(d / 7);
+  if (w < 5) return `${w}w`;
+  return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
 /** Sort: upvotes first, then discussion activity. */
