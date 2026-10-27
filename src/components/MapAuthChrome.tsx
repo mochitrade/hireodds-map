@@ -12,6 +12,7 @@ import {
   userKarma,
   type MapNotif,
 } from '../lib/mapSocial';
+import { hydrateProfilesFromCloud } from '../lib/mapCloud';
 import type { ScenePlace } from '../lib/sceneMap';
 
 export function MapAuthChrome({ places }: { places: ScenePlace[] }) {
@@ -35,13 +36,13 @@ export function MapAuthChrome({ places }: { places: ScenePlace[] }) {
       if (cancelled) return;
       setSession(data.session);
       setReady(true);
-      if (data.session?.user) ensureProfile(data.session.user);
+      if (data.session?.user) void ensureProfile(data.session.user);
     });
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_e, next) => {
       setSession(next);
-      if (next?.user) ensureProfile(next.user);
+      if (next?.user) void ensureProfile(next.user);
     });
     return () => {
       cancelled = true;
@@ -49,15 +50,17 @@ export function MapAuthChrome({ places }: { places: ScenePlace[] }) {
     };
   }, []);
 
-  function ensureProfile(u: User) {
+  async function ensureProfile(u: User) {
+    // Load cloud profile first so username/avatar survive new devices
+    await hydrateProfilesFromCloud();
     const existing = getProfile(u.id);
-    if (existing?.setupComplete) {
-      upsertProfile({
-        ...existing,
-        email: u.email || existing.email,
-      });
+    if (existing?.setupComplete && existing.username && existing.avatarUrl) {
+      if (u.email && u.email !== existing.email) {
+        upsertProfile({ ...existing, email: u.email });
+      }
       return;
     }
+    // Seed a local stub only — do not mark complete until setup modal
     upsertProfile({
       userId: u.id,
       displayName: existing?.displayName || '',
@@ -68,7 +71,7 @@ export function MapAuthChrome({ places }: { places: ScenePlace[] }) {
         u.user_metadata?.avatar_url ||
         u.user_metadata?.picture,
       createdAt: existing?.createdAt || Date.now(),
-      setupComplete: false,
+      setupComplete: existing?.setupComplete === true,
     });
   }
 

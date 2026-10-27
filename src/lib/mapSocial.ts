@@ -111,6 +111,10 @@ export function upsertProfile(p: MapProfile) {
   const all = loadProfiles();
   all[p.userId] = { ...all[p.userId], ...p };
   saveProfiles(all);
+  // Persist to Supabase so username/avatar survive devices + reloads
+  void import('./mapCloud')
+    .then((m) => m.pushProfileToCloud(all[p.userId]))
+    .catch(() => {});
   return all[p.userId];
 }
 

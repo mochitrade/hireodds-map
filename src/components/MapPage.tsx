@@ -33,6 +33,15 @@ import { MapAuthChrome, useMapSession } from './MapAuthChrome';
 import { MapMobileSheet, MapMobileWeather } from './MapMobileSheet';
 import { MapProfileSetup } from './MapProfileSetup';
 import { getProfile, needsProfileSetup, pushNotif } from '../lib/mapSocial';
+import {
+  fetchCloudPlaces,
+  fetchCloudScenes,
+  hydrateProfilesFromCloud,
+  mergePlaces,
+  pushPlaceToCloud,
+  pushPlacesToCloud,
+  pushSceneToCloud,
+} from '../lib/mapCloud';
 import { isSupabaseConfigured, supabase } from '../supabaseClient';
 
 type DraftPin = { lat: number; lng: number };
@@ -156,31 +165,55 @@ export function MapPage() {
     saveCustomScenes(customScenes);
   }, [customScenes]);
 
-  // Sync community scenes from Supabase when available
+  // Hydrate profiles + places + scenes from Supabase (shared, durable)
   useEffect(() => {
     if (!isSupabaseConfigured) return;
     let cancelled = false;
     void (async () => {
-      const { data, error } = await supabase
-        .from('map_scenes')
-        .select('id,label,color')
-        .limit(200);
-      if (cancelled || error || !data?.length) return;
-      setCustomScenes((prev) => {
-        const byId = new Map(prev.map((s) => [s.id, s]));
-        for (const row of data as { id: string; label: string; color: string }[]) {
-          if (!row?.id || !row.label) continue;
-          if (!byId.has(row.id)) {
-            byId.set(row.id, { id: row.id, label: row.label, color: row.color || '#e8843a' });
+      await hydrateProfilesFromCloud();
+      if (cancelled) return;
+      setProfileTick((n) => n + 1);
+
+      const [cloudPlaces, cloudScenes] = await Promise.all([
+        fetchCloudPlaces(),
+        fetchCloudScenes(),
+      ]);
+      if (cancelled) return;
+
+      if (cloudPlaces?.length) {
+        setPlaces((prev) => {
+          const merged = mergePlaces(prev, cloudPlaces);
+          return merged;
+        });
+      } else if (cloudPlaces && cloudPlaces.length === 0) {
+        // First cloud load empty — seed shared world from local defaults
+        const seed = loadPlaces();
+        void pushPlacesToCloud(seed);
+      }
+
+      if (cloudScenes?.length) {
+        setCustomScenes((prev) => {
+          const byId = new Map(prev.map((s) => [s.id, s]));
+          for (const s of cloudScenes) {
+            if (!byId.has(s.id)) byId.set(s.id, s);
           }
-        }
-        return [...byId.values()];
-      });
+          return [...byId.values()];
+        });
+      }
     })();
     return () => {
       cancelled = true;
     };
   }, []);
+
+  // Debounced cloud save whenever places change (comments, votes, new pins)
+  useEffect(() => {
+    if (!isSupabaseConfigured || !user) return;
+    const t = window.setTimeout(() => {
+      void pushPlacesToCloud(places);
+    }, 900);
+    return () => window.clearTimeout(t);
+  }, [places, user]);
 
   useEffect(() => {
     if (!mapEl.current || mapRef.current) return;
@@ -414,15 +447,7 @@ export function MapPage() {
     };
     setCustomScenes((prev) => [...prev, scene]);
     setActiveScene(id);
-    if (isSupabaseConfigured) {
-      void supabase.from('map_scenes').upsert({
-        id: scene.id,
-        label: scene.label,
-        color: scene.color,
-        created_by: user.id,
-        created_at: new Date().toISOString(),
-      });
-    }
+    void pushSceneToCloud(scene, user.id);
     pushNotif({
       userId: user.id,
       title: 'Scene live',
@@ -504,6 +529,7 @@ export function MapPage() {
       authorName,
     });
     setPlaces((prev) => [place, ...prev]);
+    void pushPlaceToCloud(place);
     markPinnedToday();
     setPinLocked(true);
     setActiveScene(form.scene);
@@ -701,7 +727,9 @@ export function MapPage() {
           if (selected) vote(selected.id, delta);
         }}
         onUpdatePlace={(next) => {
-          setPlaces((prev) => prev.map((p) => (p.id === next.id ? normalizePlace(next) : p)));
+          const normalized = normalizePlace(next);
+          setPlaces((prev) => prev.map((p) => (p.id === next.id ? normalized : p)));
+          void pushPlaceToCloud(normalized);
         }}
         onScene={setActiveScene}
         onSelectPlace={(id) => {
@@ -757,7 +785,9 @@ export function MapPage() {
               : null
           }
           onUpdate={(next) => {
-            setPlaces((prev) => prev.map((p) => (p.id === next.id ? normalizePlace(next) : p)));
+            const normalized = normalizePlace(next);
+            setPlaces((prev) => prev.map((p) => (p.id === next.id ? normalized : p)));
+            void pushPlaceToCloud(normalized);
           }}
         />
       ) : null}
