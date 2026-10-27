@@ -42,7 +42,7 @@ import {
   pushPlacesToCloud,
   pushSceneToCloud,
 } from '../lib/mapCloud';
-import { isSupabaseConfigured, supabase } from '../supabaseClient';
+import { isSupabaseConfigured } from '../supabaseClient';
 
 type DraftPin = { lat: number; lng: number };
 
