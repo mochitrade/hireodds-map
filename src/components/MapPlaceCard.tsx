@@ -422,21 +422,27 @@ export function MapPlaceDetail({
             className="h-9 flex-1 rounded-full text-[13px] font-medium text-[#161311]"
             style={{ background: 'var(--map-orange)' }}
           >
-            Upvote · {place.votes}
-          </button>
-          <button
-            type="button"
-            onClick={() => void sharePlace()}
-            className="h-9 flex-1 rounded-full border border-[rgba(235,228,218,0.14)] text-[13px] font-medium"
-          >
-            {copied ? 'Copied' : `Share · ${place.shares || 0}`}
+            ▲ Upvote · {place.votes}
           </button>
           <button
             type="button"
             onClick={() => onVote(-1)}
-            className="grid h-9 w-9 place-items-center rounded-full border border-[rgba(235,228,218,0.14)] text-[16px]"
+            className="h-9 flex-1 rounded-full border border-[rgba(235,228,218,0.14)] text-[13px] font-medium text-[rgba(235,228,218,0.85)]"
           >
-            −
+            ▼ Downvote
+          </button>
+          <button
+            type="button"
+            onClick={() => void sharePlace()}
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[rgba(235,228,218,0.14)] text-[rgba(235,228,218,0.7)]"
+            aria-label={copied ? 'Link copied' : 'Share'}
+            title={copied ? 'Copied' : 'Share'}
+          >
+            {copied ? (
+              <span className="text-[11px] font-semibold text-[#6fce7e]">✓</span>
+            ) : (
+              <ShareIcon />
+            )}
           </button>
         </div>
 
@@ -559,6 +565,17 @@ export function MapPlaceDetail({
         </div>
       </div>
     </div>
+  );
+}
+
+function ShareIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" aria-hidden>
+      <circle cx="18" cy="5" r="2.4" />
+      <circle cx="6" cy="12" r="2.4" />
+      <circle cx="18" cy="19" r="2.4" />
+      <path d="M8.2 13.2l7.5 4.2M15.7 6.6l-7.5 4.2" strokeLinecap="round" />
+    </svg>
   );
 }
 
