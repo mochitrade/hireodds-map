@@ -1,7 +1,53 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
-  <rect width="32" height="32" rx="8" fill="#111112"/>
-  <g transform="translate(4 4)" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round">
-    <path d="M6 18V8.5C6 6.6 7.6 5 9.5 5S13 6.6 13 8.5V18"/>
-    <path d="M16 18v-4M19 18v-7"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <defs>
+    <linearGradient id="route" x1="64" y1="8" x2="64" y2="120" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F5E54A"/>
+      <stop offset="45%" stop-color="#7CDB4A"/>
+      <stop offset="100%" stop-color="#4BB8F0"/>
+    </linearGradient>
+    <linearGradient id="routeGlow" x1="64" y1="8" x2="64" y2="120" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F5E54A" stop-opacity="0.45"/>
+      <stop offset="50%" stop-color="#7CDB4A" stop-opacity="0.28"/>
+      <stop offset="100%" stop-color="#4BB8F0" stop-opacity="0.2"/>
+    </linearGradient>
+    <radialGradient id="badgeShade" cx="50%" cy="38%" r="62%">
+      <stop offset="0%" stop-color="#3a3a3c"/>
+      <stop offset="70%" stop-color="#1c1c1e"/>
+      <stop offset="100%" stop-color="#0a0a0b"/>
+    </radialGradient>
+    <filter id="softShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="3" stdDeviation="3.5" flood-color="#000" flood-opacity="0.55"/>
+    </filter>
+  </defs>
+
+  <!-- App squircle -->
+  <rect width="128" height="128" rx="28" fill="#0c0c0d"/>
+
+  <!-- Subtle map blocks -->
+  <g opacity="0.55" fill="#1a1a1c">
+    <rect x="10" y="14" width="28" height="18" rx="3" transform="rotate(-28 24 23)"/>
+    <rect x="78" y="8" width="36" height="16" rx="3" transform="rotate(18 96 16)"/>
+    <rect x="6" y="52" width="22" height="34" rx="3" transform="rotate(12 17 69)"/>
+    <rect x="96" y="48" width="26" height="40" rx="3" transform="rotate(-16 109 68)"/>
+    <rect x="18" y="96" width="32" height="18" rx="3" transform="rotate(-22 34 105)"/>
+    <rect x="86" y="98" width="30" height="16" rx="3" transform="rotate(14 101 106)"/>
+  </g>
+
+  <!-- Soft glow behind route -->
+  <rect x="52" y="6" width="24" height="116" rx="12" fill="url(#routeGlow)"/>
+
+  <!-- Neon route -->
+  <rect x="56" y="8" width="16" height="112" rx="8" fill="url(#route)"/>
+
+  <!-- Location badge -->
+  <g filter="url(#softShadow)">
+    <circle cx="64" cy="78" r="30" fill="url(#badgeShade)"/>
+    <circle cx="64" cy="78" r="30" fill="none" stroke="#4a4a4e" stroke-width="3.5"/>
+    <circle cx="64" cy="78" r="26.5" fill="#111113"/>
+  </g>
+
+  <!-- Map pin (replaces plane) -->
+  <g fill="#ffffff">
+    <path d="M64 58.5c-8.2 0-14.8 6.5-14.8 14.6 0 10.2 12.1 22.4 13.8 24 .9.8 2.1.8 3 0 1.7-1.6 13.8-13.8 13.8-24 0-8.1-6.6-14.6-14.8-14.6zm0 20.2a5.7 5.7 0 1 1 0-11.4 5.7 5.7 0 0 1 0 11.4z"/>
   </g>
 </svg>
