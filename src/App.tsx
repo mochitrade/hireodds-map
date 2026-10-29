@@ -1,6 +1,7 @@
 import React from 'react';
-import { MapPage } from './components/MapPage';
+import TalentPage from './components/talent/TalentPage';
 
+/** Clarvy is the only product on this site. */
 export default function App() {
-  return <MapPage />;
+  return <TalentPage />;
 }
